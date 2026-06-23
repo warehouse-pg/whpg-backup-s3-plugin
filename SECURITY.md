@@ -14,7 +14,7 @@ kept entirely internal to the project.
 
 If you know of a publicly disclosed security vulnerability for WarehousePG,
 please **IMMEDIATELY** contact the WarehousePG project team
-(security@warehousepg.org).
+(analytics-security@enterprisedb.org).
 
 **IMPORTANT: Do not file public issues on GitHub for security vulnerabilities!**
 
@@ -23,7 +23,7 @@ address with the details of the vulnerability. The email will be fielded by the
 WarehousePG project team. Emails will be addressed promptly, including a
 detailed plan to investigate the issue and any potential workarounds to perform
 in the meantime. Do not report non-security-impacting bugs through this
-channel. Use [GitHub issues](https://github.com/EnterpriseDB/gpbackup-s3-plugin/issues)
+channel. Use [GitHub issues](https://github.com/warehouse-pg/whpg-backup-s3-plugin/issues)
 instead.
 
 ## Proposed Email Content
@@ -103,7 +103,7 @@ take until the fix can be applied to their WarehousePG instances.
 
 ## Mailing lists
 
-* Use security@warehousepg.org to report security concerns to the WarehousePG
+* Use analytics-security@enterprisedb.org to report security concerns to the WarehousePG
   project team, who uses the list to privately discuss security issues
   and fixes prior to disclosure.
 
