@@ -14,23 +14,23 @@ The project requires the Go Programming language version 1.13 or higher. Follow 
 ## Downloading
 
 ```bash
-go get github.com/greenplum-db/gpbackup-s3-plugin/...
+go get github.com/warehouse-pg/whpg-backup-s3-plugin/...
 ```
 
 ## Building and installing binaries
-Switch your current working directory to the above `gpbackup_s3_plugin` source directory
+Switch your current working directory to the above `whpg-backup-s3-plugin` source directory
 
 **Build**
 ```bash
 make build
 ```
-This will build the `gpbackup_s3_plugin` binary in `$HOME/go/bin`.
+This will build the `whpg-backup-s3-plugin` binary in `$HOME/go/bin`.
 
 **Install**
 ```bash
 make install
 ```
-This will install the `gpbackup_s3_plugin` binary on all the segments hosts. Note that GPDB must be sourced for this to work.
+This will install the `whpg-backup-s3-plugin` binary on all the segments hosts. Note that warehouse-pg must be sourced for this to work.
 
 ## Test
 ```bash
@@ -39,12 +39,12 @@ make test
 Runs the unit tests
 
 ## S3 Storage Plugin Configuration File Format
-The configuration file specifies the absolute path to the gpbackup_s3_plugin executable, AWS connection credentials, and S3 location.
+The configuration file specifies the absolute path to the whpg-backup-s3-plugin executable, AWS connection credentials, and S3 location.
 
 The configuration file must be a valid YAML document in the following format: 
 
 ```
-executablepath: <absolute-path-to-gpbackup_s3_plugin>
+executablepath: <absolute-path-to-whpg-backup-s3-plugin>
 options: 
   region: <aws-region>
   endpoint: <s3-endpoint>
@@ -56,7 +56,7 @@ options:
   http_proxy: <http-proxy>
  ```
 
-`executablepath` is the absolute path to the plugin executable (eg: use the fully expanded path of $GPHOME/bin/gpbackup_s3_plugin).
+`executablepath` is the absolute path to the plugin executable (eg: use the fully expanded path of $GPHOME/bin/whpg-backup_s3_plugin).
 
 Below are the s3 plugin options
 
@@ -79,7 +79,7 @@ Below are the s3 plugin options
 This is an example S3 storage plugin configuration file that is used in the next gpbackup example command. The name of the file is s3-test-config.yaml.
 
 ```
-executablepath: $GPHOME/bin/gpbackup_s3_plugin
+executablepath: $GPHOME/bin/whpg-backup_s3_plugin
 options: 
   region: us-west-2
   aws_access_key_id: test-s3-user
@@ -96,10 +96,10 @@ gpbackup --dbname demo --single-data-file --plugin-config /home/gpadmin/s3-test-
 The S3 storage plugin writes the backup files to this S3 location in the AWS region us-west-2.
 
 ```
-gpdb-backup/test/backup3/backups/YYYYMMDD/YYYYMMDDHHMMSS/
+whpg-backup/test/backup3/backups/YYYYMMDD/YYYYMMDDHHMMSS/
 ```
 
 ## Notes
-The S3 storage plugin application must be in the same location on every Greenplum Database host. The configuration file is required only on the coordinator host.
+The S3 storage plugin application must be in the same location on every WarehousePG Database host. The configuration file is required only on the coordinator host.
 
 Using Amazon S3 to back up and restore data requires an Amazon AWS account with access to the Amazon S3 bucket. The Amazon S3 bucket permissions required are Upload/Delete for the S3 user ID that uploads the files and Open/Download and View for the S3 user ID that accesses the files.

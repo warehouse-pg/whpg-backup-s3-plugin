@@ -2,16 +2,15 @@
 
 We warmly welcome and greatly appreciate contributions from the
 community. By participating you agree to the [code of
-conduct](https://github.com/greenplum-db/gpbackup-s3-plugin/blob/main/CODE-OF-CONDUCT.md).
-Overall, we follow GPDB's comprehensive contribution policy. Please
-refer to it [here](https://github.com/greenplum-db/gpdb#contributing)
+conduct](https://github.com/warehouse-pg/whpg-backup-s3-plugin/blob/main/CODE-OF-CONDUCT.md).
+Overall, we follow WarehousePG's comprehensive contribution policy. Please
+refer to it [here](https://github.com/warehouse-pg/warehouse-pg/blob/main/CONTRIBUTING.md)
 for details.
 
 ## Getting Started
 
-* Sign our [Contributor License Agreement](https://cla.vmware.com/cla/1/preview)
-* Fork the gpbackup-s3-plugin repository on GitHub
-* Run `go get github.com/greenplum-db/gpbackup-s3-plugin/...` and add
+* Fork the whpg-backup-s3-plugin repository on GitHub
+* Run `go get github.com/warehouse-pg/whpg-backup-s3-plugin/...` and add
   your fork as a remote
 * Run `make depend` to install required dependencies
 * Follow the README to set up your environment
@@ -19,7 +18,7 @@ for details.
 ## Creating a change
 
 * Create your own feature branch (e.g. `git checkout -b
-  gpbackup-s3-plugin_branch`) and make changes on this branch.
+  whpg-backup-s3-plugin_branch`) and make changes on this branch.
 * Try and follow similar coding styles as found throughout the code
   base.
 * Make commits as logical units for ease of reviewing.
@@ -32,7 +31,7 @@ for details.
 * Run `make format` and `make test` in your feature branch and ensure
   they are successful.
 * Push your local branch to the fork (e.g. `git push <your_fork>
-  gpbackup-s3-plugin_branch`)
+  whpg-backup-s3-plugin_branch`)
 
 ## Submitting a Pull Request
 
@@ -58,6 +57,6 @@ the intent of your change.
 
 ## Community
 
-Connect with Greenplum on:
-* [Slack](https://greenplum.slack.com/)
-* [Dev Google Group mailing list](https://groups.google.com/a/greenplum.org/forum/#!forum/gpdb-dev/join)
+Connect with WarehousePG on:
+* [Github](https://github.com/warehouse-pg/whpg-backup/discussions)
+

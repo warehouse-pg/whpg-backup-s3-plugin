@@ -1,6 +1,4 @@
-Greenplum Database Backup Plugin for AWS s3
-
-Copyright 2018-Present VMware, Inc. or its affiliates. All Rights Reserved.
+WarehousePG Backup Plugin for AWS s3
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
