@@ -9,12 +9,14 @@ The S3 plugin supports both AWS and custom storage servers that implement the S3
 
 ## Pre-Requisites
 
-The project requires the Go Programming language version 1.13 or higher. Follow the directions [here](https://golang.org/doc/) for installation, usage and configuration instructions.
+The project requires the Go Programming language version 1.23 or higher. Follow the directions [here](https://golang.org/doc/) for installation, usage and configuration instructions.
+The project also has a dependency on `sqlite3`. This is installed by default on many platforms, but you must install it on your system if it is not present.
 
 ## Downloading
-
+Clone the repository:
 ```bash
-go get github.com/warehouse-pg/whpg-backup-s3-plugin/...
+git clone https://github.com/warehouse-pg/whpg-backup-s3-plugin.git
+cd whpg-backup-s3-plugin
 ```
 
 ## Building and installing binaries
