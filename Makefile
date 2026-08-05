@@ -1,85 +1,93 @@
 all: build
 
-ifndef GOPATH
-$(error Environment variable GOPATH is not set)
-endif
-
 SHELL := /bin/bash
 .DEFAULT_GOAL := all
-S3_PLUGIN=gpbackup_s3_plugin
-DIR_PATH=$(shell dirname `pwd`)
-BIN_DIR=$(shell echo $${GOPATH:-~/go} | awk -F':' '{ print $$1 "/bin"}')
+
+S3_PLUGIN := gpbackup_s3_plugin
+
+# Where the built binary lands. This is a contract with the RPM packaging, which
+# runs `make build` and then collects binaries out of $GOPATH/bin, so it must
+# keep pointing there. GOPATH may be a list; only the first element is used,
+# matching the go command. Unset falls back to the go command's own default,
+# which is why this needs no GOPATH guard.
+BIN_DIR := $(shell echo $${GOPATH:-~/go} | awk -F':' '{ print $$1 "/bin"}')
 
 GIT_VERSION := $(shell { git describe --tags --always 2>/dev/null || echo "v0.0.0-NoTag"; } | perl -pe 's/(.*)-([0-9]*)-(g[0-9a-f]*)/\1+dev.\2.\3/')
-PLUGIN_VERSION_STR="-X github.com/greenplum-db/gpbackup-s3-plugin/s3plugin.Version=$(GIT_VERSION)"
-GOLANG_LINTER=$(GOPATH)/bin/golangci-lint
-GINKGO=$(GOPATH)/bin/ginkgo
-GOIMPORTS=$(GOPATH)/bin/goimports
-GO_ENV=GO111MODULE=on # ensure the project still compiles in $GOPATH/src using golang versions 1.12 and below
-DEBUG=-gcflags=all="-N -l"
 
-# Prefer gpsync as the newer utility, fall back to gpscp if not present (older installs)
-ifeq (, $(shell which gpsync))
-COPYUTIL=gpscp
-else
-COPYUTIL=gpsync
-endif
+# The -X argument names a variable by its full package path, so it has to track
+# the module path in go.mod. Changing one without the other leaves the version
+# unstamped and reports nothing: the linker does not treat an unmatched symbol
+# as an error.
+PLUGIN_VERSION_STR := "-X github.com/greenplum-db/gpbackup-s3-plugin/s3plugin.Version=$(GIT_VERSION)"
 
-LINTER_VERSION=1.16.0
-$(GOLANG_LINTER) :
-		curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(GOPATH)/bin v${LINTER_VERSION}
+DEBUG := -gcflags=all="-N -l"
 
-depend :
-		$(GO_ENV) go mod download
+# gofmt and goimports run as golangci-lint v2 formatters, configured in
+# .golangci.yml, so they need no separate installation of their own.
+GOLANGCI_LINT_VERSION := v2.11.4
 
-$(GINKGO) :
-		$(GO_ENV) go install github.com/onsi/ginkgo/v2/ginkgo@latest
+.PHONY: all depend build build_linux build_mac debug install lint format vet \
+	unit test tools clean
 
-$(GOIMPORTS) :
-		$(GO_ENV) go install golang.org/x/tools/cmd/goimports
+depend:
+	go mod download
 
-format : $(GOIMPORTS)
-		goimports -w .
-		gofmt -w -s .
+build: depend
+	go build -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
 
-lint : $(GOLANG_LINTER)
-		golangci-lint run --tests=false
+build_linux: depend
+	env GOOS=linux GOARCH=amd64 go build -o $(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
 
-unit : depend $(GINKGO)
-		$(GO_ENV) ginkgo -r --keep-going --randomize-suites --randomize-all --no-color s3plugin 2>&1
+build_mac: depend
+	env GOOS=darwin GOARCH=amd64 go build -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
 
-test : unit
+debug: depend
+	go build $(DEBUG) -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
 
-debug : depend
-		$(GO_ENV) go build $(DEBUG) -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
+lint:
+	golangci-lint run
 
-build : depend
-		$(GO_ENV) go build -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
+# Rewrites files in place, rather than just reporting, for local use.
+format:
+	golangci-lint fmt
 
-build_linux : depend
-		env GOOS=linux GOARCH=amd64 $(GO_ENV) go build -o $(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
+vet:
+	go vet ./...
 
-build_mac : depend
-		env GOOS=darwin GOARCH=amd64 $(GO_ENV) go build -o $(BIN_DIR)/$(S3_PLUGIN) -ldflags $(PLUGIN_VERSION_STR)
+# ginkgo is pinned by the `tool` directive in go.mod, so `go tool` runs the
+# version this module was tested against instead of whatever @latest resolves to.
+unit:
+	go tool ginkgo -r --keep-going --randomize-suites --randomize-all --no-color s3plugin 2>&1
 
-install : build
-		@psql -t -d template1 -c 'select distinct hostname from gp_segment_configuration' > /tmp/seg_hosts 2>/dev/null; \
+test: lint vet unit
+
+# golangci-lint is intentionally not a `tool` directive: it does not support
+# being built as a library dependency.
+tools:
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
+
+# gpsync is the current name, gpscp the older one. Recursively expanded so this
+# is resolved only when install runs, rather than on every make invocation.
+COPYUTIL = $(shell command -v gpsync >/dev/null 2>&1 && echo gpsync || echo gpscp)
+
+install: build
+	@psql -t -d template1 -c 'select distinct hostname from gp_segment_configuration' > /tmp/seg_hosts 2>/dev/null; \
+	if [ $$? -eq 0 ]; then \
+		$(COPYUTIL) -f /tmp/seg_hosts $(BIN_DIR)/$(S3_PLUGIN) =:$(GPHOME)/bin/$(S3_PLUGIN); \
 		if [ $$? -eq 0 ]; then \
-			$(COPYUTIL) -f /tmp/seg_hosts $(BIN_DIR)/$(S3_PLUGIN) =:$(GPHOME)/bin/$(S3_PLUGIN); \
-			if [ $$? -eq 0 ]; then \
-				echo 'Successfully copied gpbackup_s3_plugin to $(GPHOME) on all segments'; \
-			else \
-				echo 'Failed to copy gpbackup_s3_plugin to $(GPHOME)'; \
-			fi; \
+			echo 'Successfully copied $(S3_PLUGIN) to $(GPHOME) on all segments'; \
 		else \
-			echo 'Database is not running, please start the database and run this make target again'; \
+			echo 'Failed to copy $(S3_PLUGIN) to $(GPHOME)'; \
 		fi; \
-		rm /tmp/seg_hosts
+	else \
+		echo 'Database is not running, please start the database and run this make target again'; \
+	fi; \
+	rm /tmp/seg_hosts
 
-clean :
-		# Build artifacts
-		rm -f $(BIN_DIR)/$(S3_PLUGIN)
-		# Test artifacts
-		rm -rf /tmp/go-build*
-		rm -rf /tmp/gexec_artifacts*
-		rm -rf /tmp/ginkgo*
+clean:
+	# Build artifacts
+	rm -f $(BIN_DIR)/$(S3_PLUGIN)
+	# Test artifacts
+	rm -rf /tmp/go-build*
+	rm -rf /tmp/gexec_artifacts*
+	rm -rf /tmp/ginkgo*
