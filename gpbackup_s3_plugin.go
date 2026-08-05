@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
 	"github.com/greenplum-db/gpbackup-s3-plugin/s3plugin"
 	"github.com/urfave/cli"
+	"github.com/warehouse-pg/common-go-libs/gplog"
 )
 
 func main() {
