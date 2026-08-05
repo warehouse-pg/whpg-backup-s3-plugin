@@ -20,11 +20,11 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/greenplum-db/gp-common-go-libs/gplog"
-	"github.com/greenplum-db/gp-common-go-libs/operating"
 	"github.com/inhies/go-bytesize"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli"
+	"github.com/warehouse-pg/common-go-libs/gplog"
+	"github.com/warehouse-pg/common-go-libs/operating"
 	"gopkg.in/yaml.v2"
 )
 
