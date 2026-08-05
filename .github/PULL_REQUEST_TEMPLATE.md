@@ -1,4 +1,4 @@
 ## Here are some reminders before you submit the pull request, please:
-- [] Run the unit tests with `make test`
-- [] Run the plugin test bench as described [here](https://github.com/greenplum-db/gpbackup/tree/master/plugins)
-- [] Describe in the PR if any [documentation](https://gpdb.docs.pivotal.io/latest/admin_guide/managing/backup-s3-plugin.html) changes are needed.
+- [] Run `make test`, which runs the linter, `go vet` and the unit tests
+- [] Run the plugin test bench, which ships with the backup utilities in their `plugins/` directory, against an S3 endpoint
+- [] Describe in the PR if any documentation changes are needed

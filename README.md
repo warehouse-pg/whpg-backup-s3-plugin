@@ -9,7 +9,7 @@ The S3 plugin supports both AWS and custom storage servers that implement the S3
 
 ## Pre-Requisites
 
-The project requires the Go Programming language version 1.23 or higher. Follow the directions [here](https://golang.org/doc/) for installation, usage and configuration instructions.
+The project requires the Go Programming language at the version given by the `go` directive in `go.mod`, or newer. Follow the directions [here](https://golang.org/doc/) for installation, usage and configuration instructions.
 
 ## Downloading
 Clone the repository:
@@ -19,25 +19,26 @@ cd whpg-backup-s3-plugin
 ```
 
 ## Building and installing binaries
-Switch your current working directory to the above `gpbackup_s3_plugin` source directory
+Run these from the directory cloned above.
 
 **Build**
 ```bash
 make build
 ```
-This will build the `gpbackup_s3_plugin` binary in `$HOME/go/bin`.
+This will build the `gpbackup_s3_plugin` binary in `$GOPATH/bin`, or `$HOME/go/bin` if `GOPATH` is not set.
 
 **Install**
 ```bash
 make install
 ```
-This will install the `gpbackup_s3_plugin` binary on all the segments hosts. Note that GPDB must be sourced for this to work.
+This will install the `gpbackup_s3_plugin` binary on all the segment hosts. Note that the WarehousePG environment must be sourced for this to work.
 
 ## Test
 ```bash
+make tools    # once, to install golangci-lint
 make test
 ```
-Runs the unit tests
+`make test` runs the linter, `go vet`, and the unit tests. Run `make unit` for the unit tests alone, which needs no additional tools.
 
 ## S3 Storage Plugin Configuration File Format
 The configuration file specifies the absolute path to the gpbackup_s3_plugin executable, AWS connection credentials, and S3 location.
