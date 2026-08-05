@@ -97,7 +97,15 @@ func main() {
 			Before: buildBeforeFunc(2),
 		},
 		{
-			Name:   "delete_directory",
+			Name:      "delete_directory",
+			Usage:     "Delete every object under a directory in the configured bucket",
+			ArgsUsage: "<config_file> <directory>",
+			Description: "<directory> is interpreted relative to the folder set in the config file,\n" +
+				"   unless it is already a strict descendant of that folder, in which case it is\n" +
+				"   used as given. A <directory> that merely starts with the folder name is\n" +
+				"   therefore treated as relative: with folder \"team/backups\", the argument\n" +
+				"   \"team/backups-old/run-1\" resolves to \"team/backups/team/backups-old/run-1\".\n" +
+				"   The configured folder itself, absolute paths and \"..\" traversal are rejected.",
 			Action: s3plugin.DeleteDirectory,
 			Before: buildBeforeFunc(2),
 		},

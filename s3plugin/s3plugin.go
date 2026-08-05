@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -341,7 +342,9 @@ func DeleteBackup(c *cli.Context) error {
 	}
 	deletePath := filepath.Join(config.Options.Folder, "backups", date, timestamp)
 	bucket := config.Options.Bucket
-	gplog.Debug("Delete location = s3://%s/%s", bucket, deletePath)
+	// Logged at Info, like delete_directory, so that the resolved target of a destructive
+	// operation is always visible without re-running with debug logging enabled.
+	gplog.Info("Delete location = s3://%s/%s", bucket, deletePath)
 
 	service := s3.New(sess)
 	iter := s3manager.NewDeleteListIterator(service, &s3.ListObjectsInput{
@@ -417,20 +420,64 @@ func ListDirectory(c *cli.Context) error {
 }
 
 func DeleteDirectory(c *cli.Context) error {
+	requestedPath := strings.TrimSpace(c.Args().Get(1))
+	if requestedPath == "" {
+		return errors.New("delete_directory requires a non-empty directory path")
+	}
+
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {
 		return err
 	}
-	deletePath := c.Args().Get(1)
+
+	deletePrefix, err := resolveDeleteDirectoryPrefix(config.Options.Folder, requestedPath)
+	if err != nil {
+		return err
+	}
+
 	bucket := config.Options.Bucket
-	gplog.Verbose("Deleting directory s3://%s/%s", bucket, deletePath)
+	gplog.Info("Deleting directory s3://%s/%s", bucket, deletePrefix)
 	service := s3.New(sess)
 	iter := s3manager.NewDeleteListIterator(service, &s3.ListObjectsInput{
 		Bucket: aws.String(bucket),
-		Prefix: aws.String(deletePath),
+		Prefix: aws.String(deletePrefix),
 	})
 	batchClient := s3manager.NewBatchDeleteWithClient(service)
 	return batchClient.Delete(aws.BackgroundContext(), iter)
+}
+
+// resolveDeleteDirectoryPrefix scopes requestedPath beneath the configured folder and returns
+// the S3 key prefix to delete. The returned prefix always ends in exactly one "/" so that it
+// only matches the requested directory: without it, "team/backups/run-1" would also match
+// objects under the sibling directories "run-10/" and "run-1-old/".
+func resolveDeleteDirectoryPrefix(folder, requestedPath string) (string, error) {
+	for _, element := range strings.Split(requestedPath, "/") {
+		if element == ".." {
+			return "", fmt.Errorf("delete_directory path must not escape configured folder %q: %q", folder, requestedPath)
+		}
+	}
+
+	folder = path.Clean(folder)
+	requestedPath = path.Clean(requestedPath)
+
+	if folder == "." || folder == "/" {
+		return "", fmt.Errorf("delete_directory requires a non-root configured folder, but received: %q", folder)
+	}
+	if requestedPath == "." || requestedPath == "/" || path.IsAbs(requestedPath) {
+		return "", fmt.Errorf("delete_directory requires a non-root relative directory path, but received: %q", requestedPath)
+	}
+	deletePath := requestedPath
+	if deletePath != folder && !strings.HasPrefix(deletePath, folder+"/") {
+		deletePath = path.Join(folder, deletePath)
+	}
+
+	if deletePath == folder || !strings.HasPrefix(deletePath, folder+"/") {
+		return "", fmt.Errorf("delete_directory path must resolve below configured folder %q: %q", folder, requestedPath)
+	}
+
+	// path.Clean has already stripped any trailing slash the operator passed, so this both
+	// restores an explicitly requested one and adds it when it was omitted.
+	return deletePath + "/", nil
 }
 
 func IsValidTimestamp(timestamp string) bool {
