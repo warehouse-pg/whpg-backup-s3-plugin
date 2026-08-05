@@ -1,0 +1,47 @@
+name: test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        # The version stamped into the binary is derived from git describe.
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        # Track the go directive rather than a hardcoded version, so a bump in
+        # go.mod cannot silently leave this behind.
+        go-version-file: go.mod
+
+    - name: Install tools
+      run: make tools
+
+    - name: Build
+      run: make build
+
+    - name: Vet
+      run: make vet
+
+    - name: Lint
+      run: make lint
+
+    - name: Unit test
+      run: make unit
+
+    # A stale go.mod is otherwise only noticed when some later command refuses
+    # to run, which is how the untidy state before this workflow existed went
+    # unnoticed.
+    - name: Check go.mod is tidy
+      run: |
+        go mod tidy
+        git diff --exit-code go.mod go.sum
