@@ -77,7 +77,7 @@ func BackupDirectory(c *cli.Context) error {
 	// Populate a list of files to be backed up
 	fileList := make([]string, 0)
 	_ = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
-		isDir, _ := isDirectoryGetSize(path)
+		isDir := isDirectory(path)
 		if !isDir {
 			fileList = append(fileList, path)
 		}
@@ -125,7 +125,7 @@ func BackupDirectoryParallel(c *cli.Context) error {
 	// Populate a list of files to be backed up
 	fileList := make([]string, 0)
 	_ = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
-		isDir, _ := isDirectoryGetSize(path)
+		isDir := isDirectory(path)
 		if !isDir {
 			fileList = append(fileList, path)
 		}
