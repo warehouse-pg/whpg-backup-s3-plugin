@@ -1,0 +1,43 @@
+version: "2"
+linters:
+  # Inverted configuration (`default: all` plus `disable`) does not scale well
+  # across golangci-lint upgrades, so enable what we want explicitly.
+  default: none
+  # These are the linters the retired gometalinter.config asked for, mapped onto
+  # what golangci-lint v2 provides: govet for vet, errcheck and unparam under
+  # their own names. golint is deprecated with no direct replacement, and
+  # varcheck was folded into unused.
+  #
+  # staticcheck is deliberately not enabled yet: it reports eleven pre-existing
+  # findings, all cosmetic (unnecessary fmt.Sprintf, errors.New(fmt.Sprintf),
+  # strings.Replace with -1). That belongs in its own change.
+  enable:
+    - errcheck
+    - govet
+    - unparam
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Test code asserts through gomega rather than returned errors.
+      - linters:
+          - errcheck
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
