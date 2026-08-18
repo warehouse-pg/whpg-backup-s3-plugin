@@ -32,10 +32,10 @@ func SetupPluginForBackup(c *cli.Context) error {
 	testFilePath := fmt.Sprintf("%s/%s", localBackupDir, testFileName)
 	fileKey := GetS3Path(config.Options.Folder, testFilePath)
 	file, err := os.Create("/tmp/" + testFileName) // dummy empty reader for probe
-	defer file.Close()
 	if err != nil {
 		return err
 	}
+	defer file.Close() // read-only probe file; a close error has nothing to report
 	_, _, err = uploadFile(sess, config, fileKey, file)
 	return err
 }
@@ -48,10 +48,10 @@ func BackupFile(c *cli.Context) error {
 	fileName := c.Args().Get(1)
 	fileKey := GetS3Path(config.Options.Folder, fileName)
 	file, err := os.Open(fileName)
-	defer file.Close()
 	if err != nil {
 		return err
 	}
+	defer file.Close() // read-only upload source; a close error has nothing to report
 	bytes, elapsed, err := uploadFile(sess, config, fileKey, file)
 	if err != nil {
 		return err

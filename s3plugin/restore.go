@@ -27,7 +27,7 @@ func SetupPluginForRestore(c *cli.Context) error {
 	return err
 }
 
-func RestoreFile(c *cli.Context) error {
+func RestoreFile(c *cli.Context) (err error) {
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {
 		return err
@@ -36,22 +36,32 @@ func RestoreFile(c *cli.Context) error {
 	bucket := config.Options.Bucket
 	fileKey := GetS3Path(config.Options.Folder, fileName)
 	file, err := os.Create(fileName)
-	defer file.Close()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// A close error can surface a late write failure (e.g. ENOSPC, NFS
+		// close-to-open) that Write did not catch, so it must not be masked by a
+		// prior download error, and the partial file must not be left behind as
+		// if it were a good restore.
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			if removeErr := os.Remove(fileName); removeErr != nil {
+				gplog.Error("%s", removeErr.Error())
+			}
+		}
+	}()
+
 	bytes, elapsed, err := downloadFile(sess, config, bucket, fileKey, file)
 	if err != nil {
-		fileErr := os.Remove(fileName)
-		if fileErr != nil {
-			gplog.Error("%s", fileErr.Error())
-		}
 		return err
 	}
 
 	gplog.Info("Downloaded %d bytes for %s in %v", bytes,
 		filepath.Base(fileKey), elapsed.Round(time.Millisecond))
-	return err
+	return nil
 }
 
 func RestoreDirectory(c *cli.Context) error {
