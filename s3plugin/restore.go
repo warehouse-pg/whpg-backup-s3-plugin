@@ -212,7 +212,10 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 					mu.Lock()
 					finalErr = err
 					mu.Unlock()
-					gplog.FatalOnError(err)
+					// Log and keep going rather than gplog.FatalOnError, which panics
+					// unrecovered here and kills the whole process, abandoning every
+					// other in-flight download instead of letting them finish.
+					gplog.Error("%s", err.Error())
 					if removeErr := os.Remove(filePath); removeErr != nil {
 						gplog.Error("%s", removeErr.Error())
 					}

@@ -179,7 +179,10 @@ func BackupDirectoryParallel(c *cli.Context) error {
 					mu.Lock()
 					finalErr = err
 					mu.Unlock()
-					gplog.FatalOnError(err)
+					// Log and keep going rather than gplog.FatalOnError, which panics
+					// unrecovered here and kills the whole process, abandoning every
+					// other in-flight upload instead of letting them finish.
+					gplog.Error("%s", err.Error())
 				}
 				_ = file.Close() // read-only upload source; a close error has nothing to report
 				wg.Done()
