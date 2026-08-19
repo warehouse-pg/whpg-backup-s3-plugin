@@ -114,6 +114,7 @@ func BackupDirectory(c *cli.Context) error {
 func BackupDirectoryParallel(c *cli.Context) error {
 	start := time.Now()
 	totalBytes := int64(0)
+	numFiles := 0
 	parallel := 5
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {
@@ -170,6 +171,7 @@ func BackupDirectoryParallel(c *cli.Context) error {
 				if err == nil {
 					mu.Lock()
 					totalBytes += bytes
+					numFiles++
 					mu.Unlock()
 					msg := fmt.Sprintf("Uploaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
@@ -193,7 +195,7 @@ func BackupDirectoryParallel(c *cli.Context) error {
 	wg.Wait()
 
 	gplog.Info("Uploaded %d files (%d bytes) in %v\n",
-		len(fileList), totalBytes, time.Since(start).Round(time.Millisecond))
+		numFiles, totalBytes, time.Since(start).Round(time.Millisecond))
 	return finalErr
 }
 
