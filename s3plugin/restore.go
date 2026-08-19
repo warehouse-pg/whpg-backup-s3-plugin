@@ -80,7 +80,10 @@ func RestoreDirectory(c *cli.Context) error {
 	_ = os.MkdirAll(dirName, 0775)
 	client := s3.New(sess)
 	params := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &dirName}
-	bucketObjectsList, _ := client.ListObjectsV2(params)
+	bucketObjectsList, err := client.ListObjectsV2(params)
+	if err != nil {
+		return err
+	}
 
 	numFiles := 0
 	for _, key := range bucketObjectsList.Contents {
@@ -135,7 +138,9 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	}
 	dirName := c.Args().Get(1)
 	if len(c.Args()) == 3 {
-		parallel, _ = strconv.Atoi(c.Args().Get(2))
+		if p, convErr := strconv.Atoi(c.Args().Get(2)); convErr == nil && p > 0 {
+			parallel = p
+		}
 	}
 	bucket := config.Options.Bucket
 	gplog.Verbose("Restore Directory Parallel '%s' from S3", dirName)
@@ -145,7 +150,10 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	_ = os.MkdirAll(dirName, 0775)
 	client := s3.New(sess)
 	params := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &dirName}
-	bucketObjectsList, _ := client.ListObjectsV2(params)
+	bucketObjectsList, err := client.ListObjectsV2(params)
+	if err != nil {
+		return err
+	}
 
 	// Create a list of files to be restored
 	numFiles := 0
@@ -160,6 +168,7 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var finalErr error
 	// Create jobs using a channel
 	fileChannel := make(chan string, len(fileList))
@@ -180,7 +189,9 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 				filePath := dirName + "/" + fileName
 				file, err := os.Create(filePath)
 				if err != nil {
+					mu.Lock()
 					finalErr = err
+					mu.Unlock()
 					wg.Done()
 					continue
 				}
@@ -189,16 +200,22 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 					err = closeErr
 				}
 				if err == nil {
+					mu.Lock()
 					totalBytes += bytes
 					numFiles++
+					mu.Unlock()
 					msg := fmt.Sprintf("Downloaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
 					gplog.Verbose("%s", msg)
 					fmt.Println(msg)
 				} else {
+					mu.Lock()
 					finalErr = err
+					mu.Unlock()
 					gplog.FatalOnError(err)
-					_ = os.Remove(filePath)
+					if removeErr := os.Remove(filePath); removeErr != nil {
+						gplog.Error("%s", removeErr.Error())
+					}
 				}
 				wg.Done()
 			}
@@ -275,6 +292,7 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 	totalBytes int64, bucket string, fileKey string, file *os.File) (int64, time.Duration, error) {
 
 	var finalErr error
+	var mu sync.Mutex
 	start := time.Now()
 	waitGroup := sync.WaitGroup{}
 	numberOfChunks := int((totalBytes + downloadChunkSize - 1) / downloadChunkSize)
@@ -339,7 +357,9 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 						Range:  aws.String(byteRange),
 					})
 				if err != nil {
+					mu.Lock()
 					finalErr = err
+					mu.Unlock()
 				}
 				gplog.Debug("Worker %d Downloaded %d bytes (chunk %d) for %s in %v",
 					id, chunkBytes, j.chunkIndex, filepath.Base(fileKey),
@@ -356,7 +376,9 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 			chunkStart := time.Now()
 			numBytes, err := file.Write(*bufferPointers[currentChunk])
 			if err != nil {
+				mu.Lock()
 				finalErr = err
+				mu.Unlock()
 			}
 			gplog.Debug("Copied %d bytes (chunk %d) for %s in %v",
 				numBytes, currentChunk, filepath.Base(fileKey),
@@ -370,5 +392,8 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 	}()
 
 	waitGroup.Wait()
-	return totalBytes, time.Since(start), errors.Wrap(finalErr, fmt.Sprintf("Error while downloading %s", fileKey))
+	mu.Lock()
+	err := finalErr
+	mu.Unlock()
+	return totalBytes, time.Since(start), errors.Wrap(err, fmt.Sprintf("Error while downloading %s", fileKey))
 }

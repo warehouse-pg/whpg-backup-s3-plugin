@@ -76,13 +76,18 @@ func BackupDirectory(c *cli.Context) error {
 
 	// Populate a list of files to be backed up
 	fileList := make([]string, 0)
-	_ = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
-		isDir := isDirectory(path)
-		if !isDir {
+	err = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !isDirectory(path) {
 			fileList = append(fileList, path)
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
 	// Process the files sequentially
 	for _, fileName := range fileList {
@@ -91,7 +96,7 @@ func BackupDirectory(c *cli.Context) error {
 			return err
 		}
 		bytes, elapsed, err := uploadFile(sess, config, fileName, file)
-		_ = file.Close()
+		_ = file.Close() // read-only upload source; a close error has nothing to report
 		if err != nil {
 			return err
 		}
@@ -116,7 +121,9 @@ func BackupDirectoryParallel(c *cli.Context) error {
 	}
 	dirName := c.Args().Get(1)
 	if len(c.Args()) == 3 {
-		parallel, _ = strconv.Atoi(c.Args().Get(2))
+		if p, convErr := strconv.Atoi(c.Args().Get(2)); convErr == nil && p > 0 {
+			parallel = p
+		}
 	}
 	gplog.Verbose("Backup Directory '%s' to S3", dirName)
 	gplog.Verbose("S3 Location = s3://%s/%s", config.Options.Bucket, dirName)
@@ -124,15 +131,21 @@ func BackupDirectoryParallel(c *cli.Context) error {
 
 	// Populate a list of files to be backed up
 	fileList := make([]string, 0)
-	_ = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
-		isDir := isDirectory(path)
-		if !isDir {
+	err = filepath.Walk(dirName, func(path string, f os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !isDirectory(path) {
 			fileList = append(fileList, path)
 		}
 		return nil
 	})
+	if err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var finalErr error
 	// Create jobs using a channel
 	fileChannel := make(chan string, len(fileList))
@@ -147,21 +160,28 @@ func BackupDirectoryParallel(c *cli.Context) error {
 			for fileKey := range jobs {
 				file, err := os.Open(fileKey)
 				if err != nil {
+					mu.Lock()
 					finalErr = err
-					return
+					mu.Unlock()
+					wg.Done()
+					continue
 				}
 				bytes, elapsed, err := uploadFile(sess, config, fileKey, file)
 				if err == nil {
+					mu.Lock()
 					totalBytes += bytes
+					mu.Unlock()
 					msg := fmt.Sprintf("Uploaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
 					gplog.Verbose("%s", msg)
 					fmt.Println(msg)
 				} else {
+					mu.Lock()
 					finalErr = err
+					mu.Unlock()
 					gplog.FatalOnError(err)
 				}
-				_ = file.Close()
+				_ = file.Close() // read-only upload source; a close error has nothing to report
 				wg.Done()
 			}
 		}(fileChannel)
