@@ -93,6 +93,8 @@ func RestoreDirectory(c *cli.Context) error {
 			// split
 			s3FileFullPathList := strings.Split(*key.Key, "/")
 			filename = s3FileFullPathList[len(s3FileFullPathList)-1]
+		} else {
+			filename = *key.Key
 		}
 		filePath := dirName + "/" + filename
 		file, err := os.Create(filePath)
@@ -101,9 +103,11 @@ func RestoreDirectory(c *cli.Context) error {
 		}
 
 		bytes, elapsed, err := downloadFile(sess, config, bucket, *key.Key, file)
-		_ = file.Close()
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
 		if err != nil {
-			fileErr := os.Remove(filename)
+			fileErr := os.Remove(filePath)
 			if fileErr != nil {
 				gplog.Error("%s", fileErr.Error())
 			}
@@ -177,9 +181,13 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 				file, err := os.Create(filePath)
 				if err != nil {
 					finalErr = err
-					return
+					wg.Done()
+					continue
 				}
 				bytes, elapsed, err := downloadFile(sess, config, bucket, fileKey, file)
+				if closeErr := file.Close(); err == nil && closeErr != nil {
+					err = closeErr
+				}
 				if err == nil {
 					totalBytes += bytes
 					numFiles++
@@ -192,7 +200,6 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 					gplog.FatalOnError(err)
 					_ = os.Remove(filePath)
 				}
-				_ = file.Close()
 				wg.Done()
 			}
 		}(fileChannel)
