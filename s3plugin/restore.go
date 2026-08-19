@@ -27,7 +27,7 @@ func SetupPluginForRestore(c *cli.Context) error {
 	return err
 }
 
-func RestoreFile(c *cli.Context) error {
+func RestoreFile(c *cli.Context) (err error) {
 	config, sess, err := readConfigAndStartSession(c)
 	if err != nil {
 		return err
@@ -36,22 +36,32 @@ func RestoreFile(c *cli.Context) error {
 	bucket := config.Options.Bucket
 	fileKey := GetS3Path(config.Options.Folder, fileName)
 	file, err := os.Create(fileName)
-	defer file.Close()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// A close error can surface a late write failure (e.g. ENOSPC, NFS
+		// close-to-open) that Write did not catch, so it must not be masked by a
+		// prior download error, and the partial file must not be left behind as
+		// if it were a good restore.
+		if closeErr := file.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			if removeErr := os.Remove(fileName); removeErr != nil {
+				gplog.Error("%s", removeErr.Error())
+			}
+		}
+	}()
+
 	bytes, elapsed, err := downloadFile(sess, config, bucket, fileKey, file)
 	if err != nil {
-		fileErr := os.Remove(fileName)
-		if fileErr != nil {
-			gplog.Error("%s", fileErr.Error())
-		}
 		return err
 	}
 
 	gplog.Info("Downloaded %d bytes for %s in %v", bytes,
 		filepath.Base(fileKey), elapsed.Round(time.Millisecond))
-	return err
+	return nil
 }
 
 func RestoreDirectory(c *cli.Context) error {
@@ -70,7 +80,10 @@ func RestoreDirectory(c *cli.Context) error {
 	_ = os.MkdirAll(dirName, 0775)
 	client := s3.New(sess)
 	params := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &dirName}
-	bucketObjectsList, _ := client.ListObjectsV2(params)
+	bucketObjectsList, err := client.ListObjectsV2(params)
+	if err != nil {
+		return err
+	}
 
 	numFiles := 0
 	for _, key := range bucketObjectsList.Contents {
@@ -83,6 +96,8 @@ func RestoreDirectory(c *cli.Context) error {
 			// split
 			s3FileFullPathList := strings.Split(*key.Key, "/")
 			filename = s3FileFullPathList[len(s3FileFullPathList)-1]
+		} else {
+			filename = *key.Key
 		}
 		filePath := dirName + "/" + filename
 		file, err := os.Create(filePath)
@@ -91,9 +106,11 @@ func RestoreDirectory(c *cli.Context) error {
 		}
 
 		bytes, elapsed, err := downloadFile(sess, config, bucket, *key.Key, file)
-		_ = file.Close()
+		if closeErr := file.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
 		if err != nil {
-			fileErr := os.Remove(filename)
+			fileErr := os.Remove(filePath)
 			if fileErr != nil {
 				gplog.Error("%s", fileErr.Error())
 			}
@@ -121,7 +138,9 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	}
 	dirName := c.Args().Get(1)
 	if len(c.Args()) == 3 {
-		parallel, _ = strconv.Atoi(c.Args().Get(2))
+		if p, convErr := strconv.Atoi(c.Args().Get(2)); convErr == nil && p > 0 {
+			parallel = p
+		}
 	}
 	bucket := config.Options.Bucket
 	gplog.Verbose("Restore Directory Parallel '%s' from S3", dirName)
@@ -131,7 +150,10 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	_ = os.MkdirAll(dirName, 0775)
 	client := s3.New(sess)
 	params := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &dirName}
-	bucketObjectsList, _ := client.ListObjectsV2(params)
+	bucketObjectsList, err := client.ListObjectsV2(params)
+	if err != nil {
+		return err
+	}
 
 	// Create a list of files to be restored
 	numFiles := 0
@@ -146,6 +168,7 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 	}
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	var finalErr error
 	// Create jobs using a channel
 	fileChannel := make(chan string, len(fileList))
@@ -166,23 +189,37 @@ func RestoreDirectoryParallel(c *cli.Context) error {
 				filePath := dirName + "/" + fileName
 				file, err := os.Create(filePath)
 				if err != nil {
+					mu.Lock()
 					finalErr = err
-					return
+					mu.Unlock()
+					wg.Done()
+					continue
 				}
 				bytes, elapsed, err := downloadFile(sess, config, bucket, fileKey, file)
+				if closeErr := file.Close(); err == nil && closeErr != nil {
+					err = closeErr
+				}
 				if err == nil {
+					mu.Lock()
 					totalBytes += bytes
 					numFiles++
+					mu.Unlock()
 					msg := fmt.Sprintf("Downloaded %d bytes for %s in %v", bytes,
 						filepath.Base(fileKey), elapsed.Round(time.Millisecond))
 					gplog.Verbose("%s", msg)
 					fmt.Println(msg)
 				} else {
+					mu.Lock()
 					finalErr = err
-					gplog.FatalOnError(err)
-					_ = os.Remove(filePath)
+					mu.Unlock()
+					// Log and keep going rather than gplog.FatalOnError, which panics
+					// unrecovered here and kills the whole process, abandoning every
+					// other in-flight download instead of letting them finish.
+					gplog.Error("%s", err.Error())
+					if removeErr := os.Remove(filePath); removeErr != nil {
+						gplog.Error("%s", removeErr.Error())
+					}
 				}
-				_ = file.Close()
 				wg.Done()
 			}
 		}(fileChannel)
@@ -258,6 +295,7 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 	totalBytes int64, bucket string, fileKey string, file *os.File) (int64, time.Duration, error) {
 
 	var finalErr error
+	var mu sync.Mutex
 	start := time.Now()
 	waitGroup := sync.WaitGroup{}
 	numberOfChunks := int((totalBytes + downloadChunkSize - 1) / downloadChunkSize)
@@ -322,7 +360,9 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 						Range:  aws.String(byteRange),
 					})
 				if err != nil {
+					mu.Lock()
 					finalErr = err
+					mu.Unlock()
 				}
 				gplog.Debug("Worker %d Downloaded %d bytes (chunk %d) for %s in %v",
 					id, chunkBytes, j.chunkIndex, filepath.Base(fileKey),
@@ -339,7 +379,9 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 			chunkStart := time.Now()
 			numBytes, err := file.Write(*bufferPointers[currentChunk])
 			if err != nil {
+				mu.Lock()
 				finalErr = err
+				mu.Unlock()
 			}
 			gplog.Debug("Copied %d bytes (chunk %d) for %s in %v",
 				numBytes, currentChunk, filepath.Base(fileKey),
@@ -353,5 +395,8 @@ func downloadFileInParallel(sess *session.Session, downloadConcurrency int, down
 	}()
 
 	waitGroup.Wait()
-	return totalBytes, time.Since(start), errors.Wrap(finalErr, fmt.Sprintf("Error while downloading %s", fileKey))
+	mu.Lock()
+	err := finalErr
+	mu.Unlock()
+	return totalBytes, time.Since(start), errors.Wrap(err, fmt.Sprintf("Error while downloading %s", fileKey))
 }

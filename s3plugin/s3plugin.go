@@ -373,7 +373,10 @@ func ListDirectory(c *cli.Context) error {
 
 	client := s3.New(sess)
 	params := &s3.ListObjectsV2Input{Bucket: &bucket, Prefix: &listPath}
-	bucketObjectsList, _ := client.ListObjectsV2(params)
+	bucketObjectsList, err := client.ListObjectsV2(params)
+	if err != nil {
+		return err
+	}
 	fileSizes := make([][]string, 0)
 
 	gplog.Verbose("Retrieving file information from directory %s in S3", listPath)
